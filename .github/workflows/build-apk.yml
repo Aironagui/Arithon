@@ -45,97 +45,87 @@ jobs:
           mkdir -p build-project
           unzip -q Arithon_Android_Project.zip -d build-project
 
+             
       - name: Prepare Arithon launcher logo
         shell: bash
         run: |
           set -e
           python3 -m pip install --quiet Pillow
           python3 <<'PY'
-          import os, glob, zipfile
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
           from PIL import Image, ImageOps
 
-          logo_path = "arithon_logo.jpeg"
-          if not os.path.isfile(logo_path):
-              raise SystemExit("Logo not found in repository root.")
+          logo_path = Path("arithon_logo.jpeg")
+          if not logo_path.is_file():
+              raise SystemExit("Cannot find arithon_logo.jpeg in repository root.")
 
-          projects = glob.glob("build-project/**/settings.gradle*", recursive=True)
-          if not projects:
-              raise SystemExit("Android project not found in ZIP.")
+          # Find the actual Android manifest and its matching res folder.
+          manifests = list(Path("build-project").rglob("AndroidManifest.xml"))
+          matches = []
+          for manifest in manifests:
+              if manifest.parent.name != "main":
+                  continue
+              res = manifest.parent / "res"
+              if res.is_dir():
+                  matches.append((manifest, res))
 
-          project_dir = os.path.dirname(projects[0])
-          res = os.path.join(project_dir, "app", "src", "main", "res")
-          if not os.path.isdir(res):
-              raise SystemExit("Android res folder not found: " + res)
+          if not matches:
+              print("Android manifests found:")
+              for p in manifests:
+                  print(" -", p)
+              raise SystemExit(
+                  "Could not find AndroidManifest.xml beside a main/res folder."
+              )
 
-          manifest = os.path.join(project_dir, "app", "src", "main",
-                                  "AndroidManifest.xml")
-          if not os.path.isfile(manifest):
-              raise SystemExit("AndroidManifest.xml not found.")
+          manifest, res = matches[0]
+          print("Using manifest:", manifest)
+          print("Using resources:", res)
 
-          import xml.etree.ElementTree as ET
+          android_ns = "http://schemas.android.com/apk/res/android"
+          ET.register_namespace("android", android_ns)
           root = ET.parse(manifest).getroot()
-          ns = "{http://schemas.android.com/apk/res/android}"
-          icon_ref = root.find("application").get(ns + "icon", "@mipmap/ic_launcher")
-          name = icon_ref.split("/")[-1]
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("No application element in AndroidManifest.xml.")
+
+          icon_ref = app.get("{" + android_ns + "}icon", "@mipmap/ic_launcher")
+          icon_name = icon_ref.split("/")[-1]
+          print("Launcher icon resource:", icon_name)
 
           logo = Image.open(logo_path).convert("RGBA")
-          bg = (22, 101, 52, 255)
 
-          # Create legacy launcher PNGs for supported densities.
-          sizes = {"mdpi": 48, "hdpi": 72, "xhdpi": 96,
-                   "xxhdpi": 144, "xxxhdpi": 192}
+          # Replace existing raster launcher icons at each available density.
+          sizes = {
+              "mdpi": 48, "hdpi": 72, "xhdpi": 96,
+              "xxhdpi": 144, "xxxhdpi": 192
+          }
+
           for density, size in sizes.items():
-              folder = os.path.join(res, "mipmap-" + density)
-              if os.path.isdir(folder):
-                  canvas = Image.new("RGBA", (size, size), bg)
-                  fitted = ImageOps.contain(logo, (int(size*.78), int(size*.78)))
-                  canvas.alpha_composite(fitted, ((size-fitted.width)//2,
-                                                   (size-fitted.height)//2))
-                  canvas.convert("RGB").save(os.path.join(folder, name + ".png"))
+              folder = res / ("mipmap-" + density)
+              if not folder.is_dir():
+                  continue
 
-          # Create adaptive-icon foreground and XML where Android 8+ uses it.
-          anydpi = os.path.join(res, "mipmap-anydpi-v26")
-          if os.path.isdir(anydpi):
-              fgdir = os.path.join(res, "drawable")
-              os.makedirs(fgdir, exist_ok=True)
-              size = 432
-              canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-              fitted = ImageOps.contain(logo, (int(size*.55), int(size*.55)))
-              canvas.alpha_composite(fitted, ((size-fitted.width)//2,
-                                               (size-fitted.height)//2))
-              canvas.save(os.path.join(fgdir, name + "_foreground.png"))
+              canvas = Image.new("RGBA", (size, size), "#166534")
+              fitted = ImageOps.contain(
+                  logo, (int(size * 0.76), int(size * 0.76))
+              )
+              canvas.alpha_composite(
+                  fitted,
+                  ((size - fitted.width) // 2, (size - fitted.height) // 2)
+              )
 
-              colors = os.path.join(res, "values", "colors.xml")
-              os.makedirs(os.path.dirname(colors), exist_ok=True)
-              if os.path.exists(colors):
-                  tree = ET.parse(colors)
-                  values = tree.getroot()
-              else:
-                  values = ET.Element("resources")
-                  tree = ET.ElementTree(values)
-              for item in list(values):
-                  if item.get("name") == "arithon_icon_background":
-                      values.remove(item)
-              ET.SubElement(values, "color",
-                            {"name": "arithon_icon_background"}).text = "#166534"
-              tree.write(colors, encoding="utf-8", xml_declaration=True)
+              for ext in (".png", ".webp", ".jpg", ".jpeg"):
+                  old = folder / (icon_name + ext)
+                  if old.exists():
+                      old.unlink()
 
-              for filename in (name + ".xml", name + "_round.xml"):
-                  path = os.path.join(anydpi, filename)
-                  if os.path.exists(path):
-                      xml = ET.Element("adaptive-icon", {
-                          "xmlns:android": "http://schemas.android.com/apk/res/android"})
-                      ET.SubElement(xml, "background", {
-                          "{http://schemas.android.com/apk/res/android}drawable":
-                          "@color/arithon_icon_background"})
-                      ET.SubElement(xml, "foreground", {
-                          "{http://schemas.android.com/apk/res/android}drawable":
-                          "@drawable/" + name + "_foreground"})
-                      ET.ElementTree(xml).write(
-                          path, encoding="utf-8", xml_declaration=True)
+              canvas.save(folder / (icon_name + ".png"))
+              print("Created:", folder / (icon_name + ".png"))
 
-          print("Launcher logo resources prepared.")
+          print("Launcher icon raster resources prepared.")
           PY
+     
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
