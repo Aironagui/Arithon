@@ -304,7 +304,6 @@ function closeConfirm(){document.getElementById('confirm').classList.remove('sho
 function resetProgress(){state={...defaults};save();closeConfirm();closeSettings();go('home');toast('Progress reset. New adventure begins!')}
 function toggleSound(b){state.sound=!state.sound;b.textContent='🔊 Sound: '+(state.sound?'ON':'OFF');if(state.sound){startMusic()}else{stopMusic()}save()}
 updateUI();renderLevels();
-</script> 
 <!-- ARITHON DEVELOPER BUTTON -->
 <button id="developerBtn" onclick="showDeveloper()"
 style="position:absolute;top:12px;left:12px;z-index:120;
