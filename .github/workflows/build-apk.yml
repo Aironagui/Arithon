@@ -21,29 +21,32 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Download Android project
+      - name: Extract Android project
         run: |
-          mkdir -p /tmp/arithon
-          curl -fL \
-            https://raw.githubusercontent.com/Aironagui/Arithon/main/Arithon_Android_Project.zip \
-            -o /tmp/arithon/project.zip
-          unzip -q /tmp/arithon/project.zip -d /tmp/arithon/project
-          find /tmp/arithon/project -name settings.gradle -print
+          mkdir -p build-project
+          unzip -q Arithon_Android_Project.zip -d build-project
+          find build-project -name settings.gradle -o -name settings.gradle.kts
 
       - name: Build debug APK
         run: |
-          PROJECT_DIR="$(dirname "$(find /tmp/arithon/project -name settings.gradle | head -n 1)")"
+          PROJECT_DIR="$(dirname "$(find build-project \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)")"
           test -n "$PROJECT_DIR"
           cd "$PROJECT_DIR"
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          gradle assembleDebug
+          mkdir -p "$GITHUB_WORKSPACE/apk-output"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/apk-output/Arithon-debug.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Arithon-APK
-          path: /tmp/arithon/project/**/app/build/outputs/apk/debug/*.apk
+          path: apk-output/Arithon-debug.apk
           if-no-files-found: error
