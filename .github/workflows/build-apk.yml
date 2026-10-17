@@ -26,7 +26,6 @@ jobs:
         run: |
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "Android SDK location: $SDK"
           find "$SDK/cmdline-tools" -type f -name sdkmanager -print || true
 
       - name: Accept Android SDK licenses
@@ -34,48 +33,47 @@ jobs:
         run: |
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager -print -quit)"
-
           if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager was not found."
+            echo "ERROR: sdkmanager not found."
             exit 1
           fi
-
-          echo "Using: $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses || true
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Extract Android project
-        shell: bash
         run: |
           mkdir -p build-project
           unzip -q Arithon_Android_Project.zip -d build-project
-          find build-project -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) -print
 
-      - name: Build debug APK
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Prepare Gradle wrapper
         shell: bash
         run: |
-          PROJECT_FILE="$(find build-project -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print -quit)"
-
+          PROJECT_FILE="$(find build-project -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
           if [ -z "$PROJECT_FILE" ]; then
             echo "ERROR: Gradle settings file not found."
+            find build-project -maxdepth 4 -type f -print
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$PROJECT_FILE")"
+          echo "PROJECT_DIR=$GITHUB_WORKSPACE/$PROJECT_DIR" >> "$GITHUB_ENV"
           cd "$PROJECT_DIR"
 
           if [ ! -f gradlew ]; then
-            echo "ERROR: gradlew is missing from the Android project."
-            exit 1
+            gradle wrapper --gradle-version 8.7
           fi
 
           chmod +x gradlew
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
           ./gradlew assembleDebug
 
       - name: Upload APK
@@ -84,4 +82,3 @@ jobs:
           name: Arithon-APK
           path: build-project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          
