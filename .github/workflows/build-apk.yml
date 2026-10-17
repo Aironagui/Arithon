@@ -33,30 +33,19 @@ jobs:
         with:
           accept-android-sdk-licenses: false
 
+      
+      - name: Set up Android SDK
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platform-tools" >> "$GITHUB_PATH"
+
       - name: Accept Android SDK licenses
         shell: bash
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" --licenses || true
-          "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Extract Android project
-        run: |
-          mkdir -p build-project
-          unzip -q Arithon_Android_Project.zip -d build-project
-          find build-project -name settings.gradle -o -name settings.gradle.kts
-
-      - name: Build debug APK
-        run: |
-          PROJECT_DIR="$(dirname "$(find build-project \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)")"
-          test -n "$PROJECT_DIR"
-          cd "$PROJECT_DIR"
-          gradle assembleDebug
-          mkdir -p "$GITHUB_WORKSPACE/apk-output"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/apk-output/Arithon-debug.apk"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Arithon-APK
-          path: apk-output/Arithon-debug.apk
-          if-no-files-found: error
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          yes | "$SDK/cmdline-tools/16.0/bin/sdkmanager" --licenses
+          "$SDK/cmdline-tools/16.0/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
