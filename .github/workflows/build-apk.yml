@@ -21,20 +21,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
+      - name: Locate Android SDK
         shell: bash
         run: |
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          echo "$SDK/cmdline-tools/16.0/bin" >> "$GITHUB_PATH"
+          echo "Android SDK location: $SDK"
+          find "$SDK/cmdline-tools" -type f -name sdkmanager -print || true
 
       - name: Accept Android SDK licenses
         shell: bash
         run: |
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          SDKMANAGER="$SDK/cmdline-tools/16.0/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager -print -quit)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager was not found."
+            exit 1
+          fi
+
+          echo "Using: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses || true
           "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
@@ -45,10 +52,8 @@ jobs:
         run: |
           mkdir -p build-project
           unzip -q Arithon_Android_Project.zip -d build-project
-          echo "Project files:"
-          find build-project -maxdepth 4 \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print
+          find build-project -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) -print
 
       - name: Build debug APK
         shell: bash
@@ -58,22 +63,20 @@ jobs:
             -print -quit)"
 
           if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: settings.gradle or settings.gradle.kts not found."
-            echo "Check the contents of Arithon_Android_Project.zip."
+            echo "ERROR: Gradle settings file not found."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$PROJECT_FILE")"
           cd "$PROJECT_DIR"
 
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug
-          else
-            echo "ERROR: Gradle wrapper (gradlew) not found."
-            echo "The Android project needs a Gradle wrapper or a compatible Gradle installation."
+          if [ ! -f gradlew ]; then
+            echo "ERROR: gradlew is missing from the Android project."
             exit 1
           fi
+
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
