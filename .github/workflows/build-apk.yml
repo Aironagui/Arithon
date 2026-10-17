@@ -1,0 +1,49 @@
+
+name: Build Arithon APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download Android project
+        run: |
+          mkdir -p /tmp/arithon
+          curl -fL \
+            https://raw.githubusercontent.com/Aironagui/Arithon/main/Arithon_Android_Project.zip \
+            -o /tmp/arithon/project.zip
+          unzip -q /tmp/arithon/project.zip -d /tmp/arithon/project
+          find /tmp/arithon/project -name settings.gradle -print
+
+      - name: Build debug APK
+        run: |
+          PROJECT_DIR="$(dirname "$(find /tmp/arithon/project -name settings.gradle | head -n 1)")"
+          test -n "$PROJECT_DIR"
+          cd "$PROJECT_DIR"
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arithon-APK
+          path: /tmp/arithon/project/**/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
